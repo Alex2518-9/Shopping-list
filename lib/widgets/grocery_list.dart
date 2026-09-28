@@ -1,85 +1,113 @@
-import 'dart:convert';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:form_app/data/categories.dart';
+import 'package:form_app/data/grocery_repository.dart';
 import 'package:form_app/models/grocery_item.dart';
 import 'package:form_app/widgets/new_tem.dart';
-import 'package:http/http.dart' as http;
 
 class GroceryList extends StatefulWidget {
-  const GroceryList({super.key});
+  const GroceryList({super.key, this.repository});
+
+  final GroceryRepository? repository;
 
   @override
   State<GroceryList> createState() => _GroceryListState();
 }
 
 class _GroceryListState extends State<GroceryList> {
+  late final GroceryRepository _repository;
   List<GroceryItem> _groceryItems = [];
 
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? FirestoreGroceryRepository();
     _loadItems();
   }
 
   Future<void> _loadItems() async {
-    final url = Uri.https(
-      'flutter-shopping-list-a39c2-default-rtdb.firebaseio.com',
-      'shopping-list.json',
-    );
-
-    final response = await http.get(url);
-
-    if (response.body == 'null') {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final loadedItems = await _repository.fetchItems();
+      if (!mounted) return;
       setState(() {
+        _groceryItems = loadedItems;
         _isLoading = false;
       });
-      return;
+    } on FirebaseException catch (error, stackTrace) {
+      _logDatabaseError('loading groceries', error, stackTrace);
+      _showLoadError();
+    } on FormatException catch (error, stackTrace) {
+      _logDatabaseError('parsing groceries', error, stackTrace);
+      _showLoadError();
+    } on TimeoutException catch (error, stackTrace) {
+      _logDatabaseError('loading groceries', error, stackTrace);
+      _showLoadError();
     }
+  }
 
-    final Map<String, dynamic> listData = jsonDecode(response.body);
-    final List<GroceryItem> loadedItems = [];
-    for (var element in listData.entries) {
-      loadedItems.add(
-        GroceryItem(
-          id: element.key,
-          name: element.value['name'],
-          quantity: element.value['quantity'],
-          category: categories.entries
-              .firstWhere((cat) => cat.value.title == element.value['category'])
-              .value,
-        ),
-      );
+  void _logDatabaseError(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (kDebugMode) {
+      debugPrint('Firestore $operation failed: $error\n$stackTrace');
     }
+  }
+
+  void _showLoadError() {
+    if (!mounted) return;
     setState(() {
-      _groceryItems = loadedItems;
+      _error = 'Could not load groceries. Check your connection and try again.';
       _isLoading = false;
     });
   }
 
-  void _addItem() async {
-    final newItem = await Navigator.of(
-      context,
-    ).push<GroceryItem?>(MaterialPageRoute(builder: (ctx) => const NewItem()));
+  Future<void> _removeItem(GroceryItem item) async {
+    setState(() {
+      _groceryItems.removeWhere((groceryItem) => groceryItem.id == item.id);
+    });
+    try {
+      await _repository.deleteItem(item.id);
+    } on FirebaseException catch (error, stackTrace) {
+      _logDatabaseError('deleting grocery item', error, stackTrace);
+      _restoreDeletedItem(item);
+    } on TimeoutException catch (error, stackTrace) {
+      _logDatabaseError('deleting grocery item', error, stackTrace);
+      _restoreDeletedItem(item);
+    }
+  }
 
-    if (newItem != null) {
+  void _restoreDeletedItem(GroceryItem item) {
+    if (!mounted) return;
+    setState(() {
+      _groceryItems.add(item);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not delete item. Please try again.')),
+    );
+  }
+
+  void _addItem() async {
+    final newItem = await Navigator.of(context).push<GroceryItem?>(
+      MaterialPageRoute(builder: (ctx) => NewItem(repository: _repository)),
+    );
+
+    if (newItem != null && mounted) {
       setState(() {
         _groceryItems.add(newItem);
       });
     }
-  }
-
-  void _removeItem(String id) async {
-    final url = Uri.https(
-      'flutter-shopping-list-a39c2-default-rtdb.firebaseio.com',
-      'shopping-list/$id.json',
-    );
-    await http.delete(url);
-    setState(() {
-      _groceryItems.removeWhere((item) => item.id == id);
-    });
   }
 
   @override
@@ -92,13 +120,23 @@ class _GroceryListState extends State<GroceryList> {
       content = const Center(child: CircularProgressIndicator());
     }
 
-    if (_groceryItems.isNotEmpty) {
+    if (_error != null) {
+      content = Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, textAlign: TextAlign.center),
+            TextButton(onPressed: _loadItems, child: const Text('Retry')),
+          ],
+        ),
+      );
+    } else if (!_isLoading && _groceryItems.isNotEmpty) {
       content = ListView.builder(
         itemBuilder: (ctx, index) => Dismissible(
           key: ValueKey(_groceryItems[index].id),
           background: Container(color: Colors.red),
           onDismissed: (direction) {
-            _removeItem(_groceryItems[index].id);
+            _removeItem(_groceryItems[index]);
           },
           child: ListTile(
             title: Text(_groceryItems[index].name),

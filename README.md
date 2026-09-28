@@ -1,16 +1,36 @@
-# form_app
+# Shopping List
 
-A new Flutter project.
+## Firestore data model
 
-## Getting Started
+The app stores grocery items in the `shopping-list` collection. Each item is a
+document with an automatically generated document ID and these fields:
 
-This project is a starting point for a Flutter application.
+| Field | Firestore type | Example |
+| --- | --- | --- |
+| `name` | string | `"Milk"` |
+| `quantity` | integer | `2` |
+| `category` | string | `"Dairy"` |
 
-A few resources to get you started if this is your first Flutter project:
+The document ID is the item's `id` in the app model; it is not duplicated in the
+document fields. `GroceryItem.toFirestore` and `GroceryItem.fromFirestore`
+define and validate this shape.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Firebase setup
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Register each target platform with the Firebase project that owns the
+   Firestore database.
+2. Run `flutterfire configure` from the project root and select that Firebase
+   project and each platform you build. This installs the native Firebase
+   configuration the app needs to initialize its default Firebase app. No
+   Firebase platform configuration was present in this checkout when checked.
+3. Create the `shopping-list` collection (it is also created automatically by
+   the first successful add) and set Firestore security rules appropriate for
+   your app's authentication and access model.
+4. Fully stop and restart the app after configuring Firebase. Hot reload does
+   not rerun Firebase initialization.
+
+The app uses the `cloud_firestore` SDK through
+[`FirestoreGroceryRepository`](./lib/data/grocery_repository.dart). Do not
+enable public read/write rules for production. If Firebase initialization
+fails, the app logs the underlying error in debug builds and displays a generic
+startup error with a retry action instead of exposing Firebase details.

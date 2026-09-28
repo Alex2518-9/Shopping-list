@@ -1,14 +1,17 @@
-import 'dart:convert';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:form_app/data/categories.dart';
 import 'package:form_app/models/category.dart';
-import 'package:form_app/models/grocery_item.dart';
-
-import 'package:http/http.dart' as http;
+import 'package:form_app/data/grocery_repository.dart';
 
 class NewItem extends StatefulWidget {
-  const NewItem({super.key});
+  const NewItem({super.key, required this.repository});
+
+  final GroceryRepository repository;
 
   @override
   State<NewItem> createState() {
@@ -23,42 +26,48 @@ class _NewItemState extends State<NewItem> {
   var _enteredQuantity = 1;
   var _selectedCategory = categories[Categories.vegetables]!;
   bool _isSending = false;
+  String? _error;
 
   void _saveItem() async {
     if (_formKey.currentState!.validate()) {
-      // Save the item
       _formKey.currentState!.save();
       setState(() {
         _isSending = true;
+        _error = null;
       });
-      final url = Uri.https(
-        'flutter-shopping-list-a39c2-default-rtdb.firebaseio.com',
-        'shopping-list.json',
-      );
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': _enteredName,
-          'quantity': _enteredQuantity,
-          'category': _selectedCategory.title,
-        }),
-      );
-
-      final Map<String, dynamic> resData = jsonDecode(response.body);
-
-      if (!context.mounted) {
-        return;
-      }
-      Navigator.of(context).pop(
-        GroceryItem(
-          id: resData['name'],
-          name: _enteredName,
+      try {
+        final newItem = await widget.repository.addItem(
+          name: _enteredName.trim(),
           quantity: _enteredQuantity,
           category: _selectedCategory,
-        ),
-      );
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(newItem);
+      } on FirebaseException catch (error, stackTrace) {
+        _logSaveError(error, stackTrace);
+        _showSaveError();
+      } on TimeoutException catch (error, stackTrace) {
+        _logSaveError(error, stackTrace);
+        _showSaveError();
+      } on FormatException catch (error, stackTrace) {
+        _logSaveError(error, stackTrace);
+        _showSaveError();
+      }
     }
+  }
+
+  void _logSaveError(Object error, StackTrace stackTrace) {
+    if (kDebugMode) {
+      debugPrint('Firestore add grocery item failed: $error\n$stackTrace');
+    }
+  }
+
+  void _showSaveError() {
+    if (!mounted) return;
+    setState(() {
+      _isSending = false;
+      _error = 'Could not add item. Check your connection and try again.';
+    });
   }
 
   void _resetForm() {
@@ -76,6 +85,16 @@ class _NewItemState extends State<NewItem> {
 
           child: Column(
             children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
               TextFormField(
                 decoration: const InputDecoration(labelText: 'Name'),
                 maxLength: 50,

@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "407071090061",
+    "firebase_url": "https://flutter-shopping-list-a39c2-default-rtdb.firebaseio.com",
+    "project_id": "flutter-shopping-list-a39c2",
+    "storage_bucket": "flutter-shopping-list-a39c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:407071090061:android:14a3c2f5c1b058f5e789c4",
+        "android_client_info": {
+          "package_name": "com.example.form_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZD0eacN-pxoOLeCHNqFvfVJTwu_UT7nk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
